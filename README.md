@@ -94,7 +94,17 @@ CUDA_VISIBLE_DEVICES=0,1 python eval.py --num_processes 2 \
 ```
 
 Use `--num_processes 1` for a single worker. `--master_port` defaults to 29312.
-Rerunning the same configuration resumes completed episodes. To recompute metrics
+Rerunning the same configuration resumes completed episodes. Resume checks the
+evaluation protocol version, effective settings, dataset content, and checkpoint
+weight manifest. Moving code or editing comments does not invalidate results;
+worker count and ports may change. Increment `EVALUATION_PROTOCOL_VERSION` when
+action execution, success criteria, or metric definitions change.
+
+Output folders from the old script-hash format require a new `--output_folder`
+with this evaluator. Existing results are left untouched; use the evaluator
+revision that created them to resume or summarize those historical runs.
+
+To recompute metrics for a run created with this evaluator,
 without running episodes, use the same dataset/model options and output folder:
 
 ```bash

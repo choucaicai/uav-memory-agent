@@ -23,15 +23,8 @@ import traceback
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
-# Prior revisions are resumable only with identical effective evaluation settings.
-RESUME_COMPATIBLE_EVALUATORS = {
-    'b6e673cf136402c336bcf669035ef8ed7d849534847c7c71bde91fe336b11237',
-    '2d277bba183ec87fa6af7e4218d53fa022147d7fc1414b3be8cac76c2cda596b',
-    '55330e584750580eebcbc20d77b9b283e1c4fd444feadd0b25cdbf15a1b634fb',
-    '66580c255f6da7b752a912ec16995bfc0a29a684d74e4d97e263c37bdc254395',
-    '1c3c3e23e43078488ea5422e57900f0e31ed1eb5552666b31dae693b8e5364bd',
-    'c75b3fe9fdf51628b8cf930cb54317beaf9a9e0e9825910715248e8564ecc044',
-}
+# Bump when action execution, success criteria, or metric semantics change.
+EVALUATION_PROTOCOL_VERSION = 1
 MEMORY_ARGUMENTS = ('fine_voxel_size', 'coarse_voxel_size', 'visit_radius')
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault('USE_TF', '0')
@@ -105,7 +98,7 @@ def memory_overrides(cfg):
             if getattr(cfg, name, None) is not None}
 
 
-def memory_parameters(cfg, saved_config=None, *, use_overrides=True):
+def memory_parameters(cfg, saved_config=None):
     if saved_config is None:
         saved_config = json.loads((Path(cfg.model_path) / 'config.json').read_text())
     values = {}
@@ -114,8 +107,7 @@ def memory_parameters(cfg, saved_config=None, *, use_overrides=True):
         if key not in saved_config:
             raise ValueError(f'Checkpoint is not configured for HiRaMem: missing {key}')
         values[key] = float(saved_config[key])
-    if use_overrides:
-        values.update(memory_overrides(cfg))
+    values.update(memory_overrides(cfg))
     if (not all(math.isfinite(value) for value in values.values())
             or not 0 < values['memory_fine_voxel_size'] < values['memory_coarse_voxel_size']
             or values['memory_visit_radius'] <= 0):
@@ -131,16 +123,14 @@ def evaluation_identity(cfg):
         'camera_name', 'seed', 'settle_seconds', 'eval_samples_per_env', 'max_episodes', 'env_names',
     )}
     values.update(
+        protocol_version=EVALUATION_PROTOCOL_VERSION,
         model_path=str(Path(cfg.model_path).resolve()),
         eval_dataset=str(Path(cfg.eval_dataset).resolve()),
         dataset_sha256=hashlib.sha256(Path(cfg.eval_dataset).read_bytes()).hexdigest(),
-        evaluator_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         model_manifest_sha256=hashlib.sha256((Path(cfg.model_path) / 'weights_manifest.json').read_bytes()).hexdigest(),
         memory_parameters=memory_parameters(cfg),
+        disable_film=bool(getattr(cfg, 'disable_film', False)),
     )
-    # Only recorded when enabled so existing output folders keep their identity.
-    if getattr(cfg, 'disable_film', False):
-        values['disable_film'] = True
     return values
 
 
@@ -153,24 +143,14 @@ def ensure_identity(cfg):
         path = folder / 'eval_config.json'
         if path.exists():
             previous = json.loads(path.read_text())
+            if 'protocol_version' not in previous:
+                raise ValueError(f'Output folder uses a legacy evaluation format: {folder}. '
+                                 'Choose a new --output_folder for this evaluator.')
             if previous != identity:
-                old_settings = {k: v for k, v in previous.items() if k != 'evaluator_sha256'}
-                new_settings = {k: v for k, v in identity.items() if k != 'evaluator_sha256'}
-                # Older evaluators always used checkpoint defaults; compare those to the effective values.
-                if 'memory_parameters' not in old_settings:
-                    old_settings['memory_parameters'] = memory_parameters(cfg, use_overrides=False)
-                if (previous.get('evaluator_sha256') not in RESUME_COMPATIBLE_EVALUATORS
-                        or old_settings != new_settings):
-                    raise ValueError(f'Output folder belongs to a different evaluation: {folder}')
-                # Keep existing result signatures intact and audit the compatible code change.
-                atomic_json(folder / 'evaluator_revisions' / f'{identity["evaluator_sha256"]}.json', {
-                    'original_sha256': previous['evaluator_sha256'],
-                    'current_sha256': identity['evaluator_sha256'],
-                    'reason': 'Compatible evaluator revision with unchanged effective evaluation settings.',
-                    'memory_parameters': identity['memory_parameters'],
-                })
-                identity = previous
-        atomic_json(path, identity)
+                raise ValueError(f'Output folder belongs to a different evaluation protocol or configuration: {folder}. '
+                                 'Choose a new --output_folder.')
+        else:
+            atomic_json(path, identity)
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
