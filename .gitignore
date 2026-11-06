@@ -1,1 +1,8 @@
 /configs/runtime.yaml
+__pycache__/
+*.pyc
+/cache/
+/results/
+/openvla-runs/
+/airsim_configs/eval_settings/
+/airsim_configs/port_settings_512/

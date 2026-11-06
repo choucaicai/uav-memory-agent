@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from raw_json_index import ACTION_MAP, aligned_action_ids, build_index  # noqa: E402
+from .raw_json_index import ACTION_MAP, aligned_action_ids, build_index  # noqa: E402
 from action_statistics import RAW_DATASET_NAME
 
 

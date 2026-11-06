@@ -58,8 +58,8 @@ valid fraction and local cumulative filtering reasons.
 From the project root:
 
 ```bash
-bash train_mem.sh
-DEPTH_LOSS_WEIGHT=0.1 DEPTH_EDGE_WEIGHT=0.1 bash train_mem.sh
+python train.py
+python train.py --depth_loss_weight 0.1 --depth_edge_weight 0.1
 ```
 
 This project includes only `model_hiramem_depth`. Queries and the depth head

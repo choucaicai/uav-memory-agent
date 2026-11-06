@@ -1,175 +1,146 @@
 # UAV Memory Agent
 
-This project contains **HiRaMem depth** (`model_hiramem_depth`) and its training,
-LoRA merging, and UAV-ON evaluation code. Weights, datasets, simulator binaries,
-and experiment outputs are stored separately. Shared helpers are included locally;
-there is no Python-code dependency on `../train`.
+HiRaMem depth (`model_hiramem_depth`) model code, training, LoRA merging, and
+UAV-ON evaluation. There are three executable workflow entry points:
+`train.py`, `merge.py`, and `eval.py`. Shared code is included in this repository.
+Weights, datasets, simulator binaries, and experiment outputs are stored separately.
 
-## Reference checkpoint: 23.2% success rate
+## Reference result
 
-The recorded evaluation of `model_hiramem_depth-tbptt2-20260928-012757/full-checkpoints-10000`
-contains 1,000 episodes, SR 23.2%, OSR 35.7%, and SPL approximately 10.03%.
-It uses `eval_uavon_oct.py`, at most 100 actions, a 20 m success threshold,
-seed 42, and action statistics `uavon_raw_json`.
+The recorded evaluation of
+`model_hiramem_depth-tbptt2-20260928-012757/full-checkpoints-10000` contains
+1,000 episodes, SR **23.2%**, OSR **35.7%**, and SPL **10.03%**.
+Its original evaluator, `eval_uavon_oct.py`, is now consolidated into `eval.py`.
+The protocol uses at most 100 actions, a 20 m success threshold, seed 42, and
+action statistics `uavon_raw_json`. Pose updates ignore collisions; collisions
+do not terminate episodes. SPL uses action counts, as in the recorded result.
 
-Set `model_path` in your local YAML to the downloaded merged checkpoint:
-
-```text
-/path/to/himem-agent
-```
-
-Only `model_hiramem_depth/` is retained; the no-depth model, Future-3D variants,
-and old baseline entry points have been removed. The depth package contains later
-optional ablation switches whose standard defaults retain the full model.
-Evaluation loads the code saved inside the selected checkpoint, including the
-exact saved implementation for the reference checkpoint.
+Evaluation loads the model implementation saved in the selected merged checkpoint.
+The source package retains optional memory/depth ablation switches; their default
+values enable the full depth model.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `model_hiramem_depth/` | Depth model, recurrent fine/coarse memory, Q-Former, depth head |
+| `train.py` | Training configuration, distributed launch, and training loop |
+| `merge.py` | Merge LoRA and memory/depth auxiliary weights |
+| `eval.py` | Distributed evaluation, resume, and metric summary |
+| `model_hiramem_depth/` | Recurrent fine/coarse memory, Q-Former, depth head |
 | `data/` | Raw JSON episodes, RGBD transforms, depth labels, memory windows |
-| `model/`, `vln_datasets/` | Shared tokenizer, prompt, image-transform, dataset helpers |
-| `finetune_acc_mem.py`, `train_mem.sh` | Depth training |
-| `merge_lora_v13_dis.py`, `merge_lora.sh` | Merge LoRA and auxiliary weights |
-| `eval_uavon_oct.py`, `eval_hiramem.sh`, `eval.sh` | Reference evaluation |
-| `configs/runtime.example.yaml` | Published configuration template with `/path/...` placeholders |
-| `configs/runtime.yaml` | Local configuration created by the user; excluded from Git |
+| `evaluation/` | Simulator helpers and reference metrics |
+| `model/`, `vln_datasets/` | Shared tokenizer, prompt, image and dataset helpers |
+| `configs/runtime.example.yaml` | Runtime path template |
 | `acc_configs/`, `airsim_configs/` | Accelerate and simulator configuration |
 
 ## Environment
-
-Activate your environment and enter the project directory:
 
 ```bash
 conda activate openfly
 cd /path/to/uav-memory-agent
 ```
 
-The project uses PyTorch, Transformers, PEFT, Accelerate, DeepSpeed, timm,
-TensorFlow/TFDS/dlimp for the reused data transforms, AirSim, and PyYAML.
-FlashAttention 2 is used by the reference scripts. The runtime-path loader itself
-needs only Python and PyYAML (`pip install pyyaml`).
+The code uses PyTorch, Transformers, PEFT, Accelerate, DeepSpeed, timm,
+TensorFlow/TFDS/dlimp for shared data transforms, AirSim, and PyYAML.
+The default model attention implementation is FlashAttention 2.
 
-## YAML runtime paths
+## Runtime configuration
 
-Only `configs/runtime.example.yaml` is distributed. Create your local configuration
-before evaluation, then replace its `/path/...` placeholders with real paths:
+Only `configs/runtime.example.yaml` is published. Create your local configuration
+and replace its `/path/...` placeholders:
 
 ```bash
 cp -n configs/runtime.example.yaml configs/runtime.yaml
 ```
 
-`cp -n` preserves an existing local configuration. `configs/runtime.yaml` is
-excluded by `.gitignore` and must not be included in a release or upload.
-
-`eval_utils.py` and the evaluation launchers read this local YAML.
-Select another YAML file with
-`UAV_MEMORY_CONFIG` before starting Python or a launcher:
-
-```bash
-UAV_MEMORY_CONFIG=/path/to/runtime.yaml bash eval.sh
-```
+`configs/runtime.yaml` is ignored by Git. Also exclude it when uploading or
+packaging files outside Git. `cp -n` preserves any existing local configuration.
 
 | YAML key | Meaning |
 | --- | --- |
 | `env_root` | Root containing `TRAIN_ENVS/` and `TEST_ENVS/` |
 | `environments` | Dataset scene names mapped to startup scripts relative to `env_root` |
-| `airsim_config_dir` | Contains `base_settings_512.json`; normally `../airsim_configs` |
+| `airsim_config_dir` | Directory containing `base_settings_512.json` |
 | `eval_dataset` | Evaluation JSON file |
-| `model_path` | Merged checkpoint with weights, tokenizer, config, and model code |
-| `output_root` | Output directory; normally `../results/depth-23.2` |
+| `model_path` | Merged checkpoint with weights, tokenizer, configuration, and model code |
+| `output_root` | Evaluation output root |
 
-Relative top-level paths are resolved against the YAML file's directory.
-Scene paths are resolved against `env_root`; absolute scene paths also work.
-Path values support `~` and environment-variable expansion.
-
-Set the environment root, evaluation dataset, and merged checkpoint paths for
-your machine. Outputs default to this project's `results/depth-23.2/`.
-Inspect paths without loading weights or starting a simulator:
-
-```bash
-python runtime_config.py
-python runtime_config.py --get model_path
-```
-
-### Paths for public release
-
-Publish `configs/runtime.example.yaml` only; keep `configs/runtime.yaml` local.
-Git ignores the local file. When packaging or uploading through a non-Git tool,
-explicitly exclude `configs/runtime.yaml` from the file list as well.
-
-The example uses `/path/to/ENVS`, `/path/to/dataset/merged_episodes_with_action.json`,
-and `/path/to/himem-agent`. Users replace these with their paths and retain the
-scene mapping. If moving YAML outside `configs/`, also adjust the relative
-`airsim_config_dir` and `output_root` values.
-
-Training scripts retain local paths. Before publishing, replace
-them with `/path/to/python-env/bin`, `/path/to/base-vla`,
-`/path/to/dataset/train.json`, `/path/to/dataset/images`, and
-`/path/to/checkpoints` as appropriate. `VLA_PATH` selects pretrained weights;
-the current path containing `train/runs-new` is a weight location, not a code import.
-Review remaining machine paths before release:
-
-```bash
-grep -RnE '/home/zzz|/data1' --include='*.py' --include='*.sh' --include='*.yaml' --include='*.md' .
-```
+Relative top-level paths resolve against the YAML directory; scene paths resolve
+against `env_root`. Absolute paths, `~`, and environment variables are supported.
+Select another YAML with `UAV_MEMORY_CONFIG=/path/to/runtime.yaml` before running
+`python eval.py`. If moving YAML outside `configs/`, adjust relative paths too.
 
 ## Evaluation
 
 ```bash
-CHECK_ONLY=1 bash eval.sh
-bash eval.sh
+# Check checkpoint assets, dataset, and scene executables.
+python eval.py --dry_run
+
+# Launch four workers and summarize after all workers finish.
+python eval.py
 ```
 
-The default launcher evaluates only the configured reference checkpoint.
-Preflight checks checkpoint assets, dataset, and scene executables without loading
-weights or launching a simulator. Results are written under
-`<output_root>/<run-name>--<checkpoint-name>/`.
+The default output is `<output_root>/<run-name>--<checkpoint-name>/`.
+Override paths or worker count with command-line arguments:
 
 ```bash
-MODEL_PATH=/path/to/himem-agent EVAL_DATASET=/path/to/eval.json \
-  OUTPUT_ROOT=/path/to/results bash eval.sh
+CUDA_VISIBLE_DEVICES=0,1 python eval.py --num_processes 2 \
+  --model_path /path/to/himem-agent \
+  --eval_dataset /path/to/eval.json \
+  --output_folder /path/to/results
 ```
 
-`bash eval_results.sh` recomputes metrics for the default output directory.
-The optional collision-termination protocol is described in
-[README_collision.md](README_collision.md); it differs from the 23.2% protocol.
-
-## Training and merging
+Use `--num_processes 1` for a single worker. `--master_port` defaults to 29312.
+Rerunning the same configuration resumes completed episodes. To recompute metrics
+without running episodes, use the same dataset/model options and output folder:
 
 ```bash
-bash train_mem.sh
+python eval.py --summarize_only --output_folder /path/to/results
 ```
 
-The launcher uses 2-step TBPTT, global trajectory batch 16, gradient accumulation 2,
-learning rate 2e-5, LoRA rank/alpha 512, fine/coarse voxels 2.5/20 m, and visit radius
-20 m, matching the reference run's saved settings. Depth labels and losses are
-documented in [model_hiramem_depth/README.md](model_hiramem_depth/README.md).
-
-Override data and base weights:
+## Training
 
 ```bash
-VLA_PATH=/path/to/base-vla bash train_mem.sh \
+python train.py --dry_run True
+python train.py
+```
+
+The script launches Accelerate with DeepSpeed ZeRO-1 and four processes by default.
+The default settings are 2-step TBPTT, global trajectory batch 16, gradient
+accumulation 2, learning rate 2e-5, LoRA rank/alpha 512, fine/coarse voxel sizes
+2.5/20 m, and visit radius 20 m. Each run gets a timestamped name.
+
+Training retains local data and base-model path defaults. Set your own paths:
+
+```bash
+python train.py --num_processes 4 \
+  --vla_path /path/to/base-vla \
   --raw_train_json /path/to/dataset/train.json \
-  --raw_media_root /path/to/dataset/images
+  --raw_media_root /path/to/dataset/images \
+  --run_root_dir /path/to/checkpoints
 ```
 
-Merge an adapter into a separate full checkpoint:
+`--master_port` defaults to 29331. `--deepspeed_config` selects another Accelerate
+configuration. `--run_id_note` sets an explicit run name. Run `python train.py --help`
+for all training options. The base-model path is a weight location; the repository
+does not import code from an external `train` directory.
+
+Training uses Accelerate accumulation/backward and optimizer updates. Action,
+depth-pixel, and depth-edge losses use separate global denominators across ranks.
+Memory is detached at each TBPTT window boundary. Training metrics, validation,
+and checkpoint saving are included. See
+[the depth model documentation](model_hiramem_depth/README.md) for depth targets
+and model options.
+
+## Merging
 
 ```bash
-RUN_DIR=/path/to/run CHECKPOINT=checkpoints-10000 bash merge_lora.sh
+python merge.py --run_dir /path/to/run --checkpoint checkpoints-10000 --dry_run
+python merge.py --run_dir /path/to/run --checkpoint checkpoints-10000
 ```
 
-The merger requires memory and depth auxiliary weights and refuses to overwrite
-an existing merged checkpoint.
-
-## Training loop
-
-Training uses Accelerate's gradient accumulation and backward/optimizer flow.
-The default launcher uses DeepSpeed ZeRO-1; clipping and optimizer updates are
-handled by DeepSpeed. Action, depth-pixel, and depth-edge losses retain separate
-global denominators across ranks. Recurrent memory is detached at each TBPTT
-window boundary. Training metrics, validation, and checkpoint saving are retained.
-There is no custom anomaly snapshot, rollback, replay, or episode-quarantine path.
+`--checkpoint` defaults to `checkpoints-10000`. The base-model path is read from
+the checkpoint's training configuration; override it with `--vla_path`.
+The output is `<run_dir>/full-<checkpoint-name>/`. The merger requires memory and
+depth auxiliary weights, checks the merged model, and refuses to overwrite an
+existing output. Set the resulting directory as `model_path` in your local YAML.

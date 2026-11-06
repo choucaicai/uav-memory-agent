@@ -3,9 +3,11 @@ import json
 import math
 import os
 import shutil
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -33,6 +35,10 @@ from data.memory_data import get_memory_dataset_and_collator
 
 @dataclass
 class FinetuneMemoryConfig:
+    num_processes: int = 4
+    master_port: int = 29331
+    deepspeed_config: Path = _THIS_DIR / 'acc_configs/deep_z1_config.yaml'
+    dry_run: bool = False
     model_module: str = 'model_hiramem_depth'
     model_class: str = 'OpenVLAForActionPrediction'
     depth_loss_weight: float = 0.1
@@ -52,12 +58,12 @@ class FinetuneMemoryConfig:
     raw_camera_name: str = 'uav_on_0'
     target_pose_mode: str = 'zero'
     run_root_dir: Path = _THIS_DIR / 'openvla-runs/openvla-uavon/hiramem'
-    run_id_note: str = 'tbptt2'
+    run_id_note: Optional[str] = None
     seed: int = 11
     # Number of parallel trajectory lanes globally, before gradient accumulation.
     total_batch_size: int = 16
     tbptt_steps: int = 2
-    grad_accumulation_steps: int = 4
+    grad_accumulation_steps: int = 2
     learning_rate: float = 2e-5
     max_grad_norm: float = 1.0
     epoches: float = 4.0
@@ -71,8 +77,8 @@ class FinetuneMemoryConfig:
     lora_dropout: float = 0.0
     init_oct_model: bool = True
     gradient_checkpointing: bool = True
-    fine_voxel_size: float = 5.0
-    coarse_voxel_size: float = 25.0
+    fine_voxel_size: float = 2.5
+    coarse_voxel_size: float = 20.0
     visit_radius: float = 20.0
     # HiRaMem Q-Former token counts (scene and frontier queries).
     num_query_tokens: int = 128
@@ -275,7 +281,6 @@ def train_memory_window(model, core, batch, optimizer, accelerator, max_grad_nor
     return metrics
 
 
-@draccus.wrap()
 def finetune(cfg: FinetuneMemoryConfig):
     if cfg.depth_target not in ('future', 'current'):
         raise ValueError('depth_target must be future or current')
@@ -423,5 +428,26 @@ def finetune(cfg: FinetuneMemoryConfig):
     accelerator.end_training()
 
 
+@draccus.wrap()
+def main(cfg: FinetuneMemoryConfig):
+    if cfg.num_processes < 1 or not 0 < cfg.master_port <= 65535:
+        raise ValueError('num_processes must be positive and master_port must be in 1..65535')
+    if cfg.run_id_note is None:
+        cfg.run_id_note = f'model_hiramem_depth-tbptt{cfg.tbptt_steps}-{datetime.now():%Y%m%d-%H%M%S}'
+    if not cfg.deepspeed_config.is_file():
+        raise FileNotFoundError(cfg.deepspeed_config)
+    command = [sys.executable, '-u', '-m', 'accelerate.commands.launch',
+               '--config_file', str(cfg.deepspeed_config), '--num_processes', str(cfg.num_processes),
+               '--main_process_port', str(cfg.master_port), str(Path(__file__).resolve()),
+               *sys.argv[1:], '--run_id_note', cfg.run_id_note]
+    if cfg.dry_run:
+        print(json.dumps({'command': command, 'training': asdict(cfg)}, default=str, indent=2))
+    elif os.environ.get('UAV_MEMORY_TRAIN_WORKER') == '1' or 'RANK' in os.environ:
+        finetune(cfg)
+    else:
+        environment = dict(os.environ, UAV_MEMORY_TRAIN_WORKER='1', PYTHONUNBUFFERED='1')
+        subprocess.run(command, env=environment, check=True)
+
+
 if __name__ == '__main__':
-    finetune()
+    main()

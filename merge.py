@@ -240,16 +240,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vla_path', default=None)
     parser.add_argument('--run_dir', required=True)
-    parser.add_argument('--merge_lora_path', required=True)
+    parser.add_argument('--checkpoint', default='checkpoints-10000')
     parser.add_argument('--adapter_dir', default='adapters')
-    parser.add_argument('--init_oct_model', default='True')
     parser.add_argument('--device', default='auto')
     parser.add_argument('--num_threads', type=int, default=8)
     parser.add_argument('--max_shard_size', default='5GB')
     parser.add_argument('--dry_run', action='store_true')
     args = parser.parse_args()
     run_dir = Path(args.run_dir).resolve()
-    checkpoint = resolve_checkpoint(run_dir, args.merge_lora_path, args.adapter_dir)
+    checkpoint = resolve_checkpoint(run_dir, args.checkpoint, args.adapter_dir)
     output = run_dir / f'full-{checkpoint.name}'
     if output.exists():
         raise FileExistsError(f'Refusing to overwrite {output}')

@@ -25,6 +25,7 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parent
 # Prior revisions are resumable only with identical effective evaluation settings.
 RESUME_COMPATIBLE_EVALUATORS = {
+    '2d277bba183ec87fa6af7e4218d53fa022147d7fc1414b3be8cac76c2cda596b',
     '55330e584750580eebcbc20d77b9b283e1c4fd444feadd0b25cdbf15a1b634fb',
     '66580c255f6da7b752a912ec16995bfc0a29a684d74e4d97e263c37bdc254395',
     '1c3c3e23e43078488ea5422e57900f0e31ed1eb5552666b31dae693b8e5364bd',
@@ -33,6 +34,8 @@ RESUME_COMPATIBLE_EVALUATORS = {
 MEMORY_ARGUMENTS = ('fine_voxel_size', 'coarse_voxel_size', 'visit_radius')
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault('USE_TF', '0')
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+os.environ.setdefault('OMP_NUM_THREADS', '4')
 os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 import airsim
@@ -44,7 +47,7 @@ from transformers import AutoTokenizer
 
 from action_statistics import resolve_action_stats_key
 from data.raw_json_index import ACTION_MAP
-from eval_utils import (
+from evaluation.simulator import (
     ENV_DICT, AIRSIM_CONFIG_DIR, RUNTIME_CONFIG, AirsimTrajRecorder, calculate_distance_uavon,
     convert_to_action_id, getPoseAfterMakeAction, to_eularian_angles,
 )
@@ -438,7 +441,7 @@ def preflight(cfg, rows):
 
 
 def summarize(cfg, rows):
-    from eval_results_v2 import process_results, print_results
+    from evaluation.metrics import process_results, print_results
     signature = ensure_identity(cfg)
     groups = defaultdict(list)
     for row in rows:
@@ -505,10 +508,10 @@ def run(cfg, rows):
     print(f'WORKER_COMPLETE rank={rank} episodes={completed}', flush=True)
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model_path', default=RUNTIME_CONFIG['model_path'])
-    parser.add_argument('--output_folder', '--output_foler', dest='output_folder', default=RUNTIME_CONFIG['output_root'])
+    parser.add_argument('--output_folder', '--output_foler', dest='output_folder', default=None)
     parser.add_argument('--eval_dataset', default=RUNTIME_CONFIG['eval_dataset'])
     parser.add_argument('--eval_max_steps', type=int, default=100)
     parser.add_argument('--success_distance', type=float, default=20.0)
@@ -532,7 +535,23 @@ def parse_args():
                         help='Zero the instruction FiLM (scale/shift) on memory queries.')
     parser.add_argument('--dry_run', action='store_true')
     parser.add_argument('--summarize_only', action='store_true')
-    return parser.parse_args()
+    parser.add_argument('--num_processes', type=int, default=4)
+    parser.add_argument('--master_port', type=int, default=29312)
+    parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
+    cfg = parser.parse_args(argv)
+    if cfg.num_processes < 1 or not 0 < cfg.master_port <= 65535:
+        parser.error('num_processes must be positive and master_port must be in 1..65535')
+    if cfg.output_folder is None:
+        checkpoint = Path(cfg.model_path)
+        output = Path(RUNTIME_CONFIG['output_root'])
+        if memory_overrides(cfg):
+            parts = ['memory']
+            for name, label in zip(MEMORY_ARGUMENTS, ('fine', 'coarse', 'visit')):
+                value = getattr(cfg, name)
+                parts.extend((label, 'model' if value is None else str(value)))
+            output /= '-'.join(parts)
+        cfg.output_folder = str(output / f'{checkpoint.parent.name}--{checkpoint.name}')
+    return cfg
 
 
 def main():
@@ -546,8 +565,18 @@ def main():
                           'memory_parameters': memory_parameters(cfg)}, indent=2))
     elif cfg.summarize_only:
         summarize(cfg, rows)
-    else:
+    elif cfg.worker or 'RANK' in os.environ:
         run(cfg, rows)
+    else:
+        if cfg.num_processes == 1:
+            run(cfg, rows)
+        else:
+            command = [sys.executable, '-u', '-m', 'torch.distributed.run',
+                       '--nnodes=1', f'--nproc_per_node={cfg.num_processes}',
+                       '--master_addr=127.0.0.1', f'--master_port={cfg.master_port}',
+                       '--max_restarts=0', str(Path(__file__).resolve()), *sys.argv[1:], '--worker']
+            subprocess.run(command, check=True)
+        summarize(cfg, rows)
 
 
 if __name__ == '__main__':
