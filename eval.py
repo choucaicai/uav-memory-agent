@@ -25,6 +25,7 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parent
 # Prior revisions are resumable only with identical effective evaluation settings.
 RESUME_COMPATIBLE_EVALUATORS = {
+    'b6e673cf136402c336bcf669035ef8ed7d849534847c7c71bde91fe336b11237',
     '2d277bba183ec87fa6af7e4218d53fa022147d7fc1414b3be8cac76c2cda596b',
     '55330e584750580eebcbc20d77b9b283e1c4fd444feadd0b25cdbf15a1b634fb',
     '66580c255f6da7b752a912ec16995bfc0a29a684d74e4d97e263c37bdc254395',
@@ -45,7 +46,7 @@ from PIL import Image
 import torch
 from transformers import AutoTokenizer
 
-from action_statistics import resolve_action_stats_key
+from data.action_statistics import resolve_action_stats_key
 from data.raw_json_index import ACTION_MAP
 from evaluation.simulator import (
     ENV_DICT, AIRSIM_CONFIG_DIR, RUNTIME_CONFIG, AirsimTrajRecorder, calculate_distance_uavon,

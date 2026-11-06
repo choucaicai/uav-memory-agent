@@ -25,7 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from .raw_json_index import ACTION_MAP, aligned_action_ids, build_index  # noqa: E402
-from action_statistics import RAW_DATASET_NAME
+from .action_statistics import RAW_DATASET_NAME
 
 
 class RawEpisodeDataset(IterableDataset):

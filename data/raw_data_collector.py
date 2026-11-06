@@ -15,7 +15,7 @@ from .collator import PaddedCollatorForActionPrediction  # noqa: E402
 from .transforms import SingleDepthRLDSBatchTransform  # noqa: E402
 
 from .raw_json_dataset import RawEpisodeDataset, RawJSONVLAIterableDataset  # noqa: E402
-from action_statistics import RAW_DATASET_NAME
+from .action_statistics import RAW_DATASET_NAME
 
 
 class RawDepthRLDSBatchTransform:
