@@ -34,6 +34,7 @@ values enable the full depth model.
 | `evaluation/` | Simulator helpers and reference metrics |
 | `model/` | Shared tokenizer, prompt, image helpers, model registry, and loss utilities |
 | `configs/runtime.example.yaml` | Runtime path template |
+| `configs/train.example.yaml` | Training paths and common hyperparameters |
 | `acc_configs/`, `airsim_configs/` | Accelerate and simulator configuration |
 
 ## Environment
@@ -113,6 +114,18 @@ python eval.py --summarize_only --output_folder /path/to/results
 
 ## Training
 
+Create your local training configuration and replace the `/path/...` placeholders:
+
+```bash
+cp -n configs/train.example.yaml configs/train.yaml
+```
+
+`train.py` reads `configs/train.yaml` by default. The local file is ignored by Git;
+publish only `configs/train.example.yaml` and exclude `configs/train.yaml` from
+non-Git uploads as well. Training paths are configured in YAML, including base
+weights, training/validation JSON, images/depth, index cache, output directory,
+warm-start checkpoint, and the Accelerate configuration.
+
 ```bash
 python train.py --dry_run True
 python train.py
@@ -123,15 +136,22 @@ The default settings are 2-step TBPTT, global trajectory batch 16, gradient
 accumulation 2, learning rate 2e-5, LoRA rank/alpha 512, fine/coarse voxel sizes
 2.5/20 m, and visit radius 20 m. Each run gets a timestamped name.
 
-Training retains local data and base-model path defaults. Set your own paths:
+Select another YAML or override individual settings on the command line:
 
 ```bash
-python train.py --num_processes 4 \
+python train.py --config_path /path/to/train.yaml --num_processes 4 \
   --vla_path /path/to/base-vla \
   --raw_train_json /path/to/dataset/train.json \
   --raw_media_root /path/to/dataset/images \
   --run_root_dir /path/to/checkpoints
 ```
+
+Command-line values override YAML values; omitted hyperparameters use the Python
+defaults. All relative training paths, including CLI path overrides, resolve
+against the selected YAML directory. Paths support `~` and environment variables.
+`raw_val_json: null` uses the configured validation split of the training JSON.
+`warm_start_checkpoint: null` starts from the base weights without a warm start.
+When moving YAML outside `configs/`, adjust relative paths such as `deepspeed_config`.
 
 `--master_port` defaults to 29331. `--deepspeed_config` selects another Accelerate
 configuration. `--run_id_note` sets an explicit run name. Run `python train.py --help`

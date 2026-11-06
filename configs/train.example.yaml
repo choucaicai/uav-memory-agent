@@ -1,0 +1,23 @@
+# Copy to train.yaml and replace /path/... with your local paths.
+# Relative paths (including CLI overrides) resolve against this YAML directory.
+vla_path: /path/to/base-vla
+raw_train_json: /path/to/dataset/train.json
+raw_media_root: /path/to/dataset/images
+raw_val_json: null
+raw_index_path: ../cache/train.json.oct_agent.index.json
+run_root_dir: ../openvla-runs/openvla-uavon/hiramem
+warm_start_checkpoint: null
+deepspeed_config: ../acc_configs/deep_z1_config.yaml
+
+# Common training settings; CLI arguments override YAML values.
+num_processes: 4
+master_port: 29331
+total_batch_size: 16
+grad_accumulation_steps: 2
+tbptt_steps: 2
+learning_rate: 2.0e-5
+lora_rank: 512
+lora_alpha: 512
+fine_voxel_size: 2.5
+coarse_voxel_size: 20.0
+visit_radius: 20.0

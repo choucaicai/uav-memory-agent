@@ -1,4 +1,5 @@
 """Two-step TBPTT training with a selectable, checkpointed model package."""
+import argparse
 import json
 import math
 import os
@@ -35,7 +36,7 @@ from data.memory_data import get_memory_dataset_and_collator
 class FinetuneMemoryConfig:
     num_processes: int = 4
     master_port: int = 29331
-    deepspeed_config: Path = _THIS_DIR / 'acc_configs/deep_z1_config.yaml'
+    deepspeed_config: Optional[Path] = None
     dry_run: bool = False
     model_module: str = 'himem_agent'
     model_class: str = 'OpenVLAForActionPrediction'
@@ -47,15 +48,15 @@ class FinetuneMemoryConfig:
     depth_near_distance: float = 10.0
     depth_near_weight: float = 3.0
     depth_huber_delta: float = 1.0
-    vla_path: str = '/home/zzz/code/OpenFly-Platform/train/runs-new/openvla-7b+vln_mix+b4+lr-1e-05-ep5+lora-r256-a512+dropout-0.0--image_aug/full-checkpoints-62077'
-    raw_train_json: Path = Path('/data1/UAV_ON_collect/record_output_with_depth_v1_512/train.json')
+    vla_path: Optional[Path] = None
+    raw_train_json: Optional[Path] = None
     raw_val_json: Optional[Path] = None
-    raw_media_root: Path = Path('/data1/UAV_ON_collect/record_output_with_depth_v1_512/images')
-    raw_index_path: Optional[Path] = _THIS_DIR / 'cache/train.json.oct_agent.index.json'
+    raw_media_root: Optional[Path] = None
+    raw_index_path: Optional[Path] = None
     raw_val_fraction: float = 0.05
     raw_camera_name: str = 'uav_on_0'
     target_pose_mode: str = 'zero'
-    run_root_dir: Path = _THIS_DIR / 'openvla-runs/openvla-uavon/hiramem'
+    run_root_dir: Optional[Path] = None
     run_id_note: Optional[str] = None
     seed: int = 11
     # Number of parallel trajectory lanes globally, before gradient accumulation.
@@ -89,6 +90,33 @@ class FinetuneMemoryConfig:
     warm_start_checkpoint: Optional[Path] = None
     attn_implementation: str = 'flash_attention_2'
     save_final: bool = True
+
+
+def load_train_config(argv=None):
+    """Load YAML with CLI overrides; resolve paths against the YAML directory."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    # Help should work before a local configuration has been created.
+    if '--help' in arguments or '-h' in arguments:
+        return draccus.parse(FinetuneMemoryConfig, args=arguments)
+    selector = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    selector.add_argument('--config_path', default=str(_THIS_DIR / 'configs/train.yaml'))
+    selected, overrides = selector.parse_known_args(arguments)
+    path = Path(os.path.expandvars(selected.config_path)).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f'Training configuration not found: {path}. '
+                                'Copy configs/train.example.yaml to configs/train.yaml '
+                                'and set your paths, or pass --config_path /path/to/train.yaml.')
+    cfg = draccus.parse(FinetuneMemoryConfig, config_path=path, args=overrides)
+    required = ('vla_path', 'raw_train_json', 'raw_media_root', 'run_root_dir', 'deepspeed_config')
+    for name in required:
+        if getattr(cfg, name) is None:
+            raise ValueError(f'Missing training path {name!r} in {path} or command-line overrides')
+    for name in required + ('raw_val_json', 'raw_index_path', 'warm_start_checkpoint'):
+        value = getattr(cfg, name)
+        if value is not None:
+            candidate = Path(os.path.expandvars(str(value))).expanduser()
+            setattr(cfg, name, (candidate if candidate.is_absolute() else path.parent / candidate).resolve())
+    return cfg
 
 
 def move_to_device(value, device):
@@ -426,8 +454,9 @@ def finetune(cfg: FinetuneMemoryConfig):
     accelerator.end_training()
 
 
-@draccus.wrap()
-def main(cfg: FinetuneMemoryConfig):
+def main(cfg: Optional[FinetuneMemoryConfig] = None):
+    if cfg is None:
+        cfg = load_train_config()
     if cfg.num_processes < 1 or not 0 < cfg.master_port <= 65535:
         raise ValueError('num_processes must be positive and master_port must be in 1..65535')
     if cfg.run_id_note is None:
