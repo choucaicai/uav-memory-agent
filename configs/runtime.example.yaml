@@ -1,0 +1,30 @@
+env_root: /path/to/ENVS
+airsim_config_dir: ../airsim_configs
+eval_dataset: /path/to/dataset/merged_episodes_with_action.json
+model_path: /path/to/himem-agent
+output_root: ../results/depth-23.2
+environments:
+  BrushifyUrban: TRAIN_ENVS/BrushifyUrban/BrushifyUrban.sh
+  CabinLake: TRAIN_ENVS/CabinLake/CabinLake.sh
+  CityPark: TRAIN_ENVS/CityPark/CityPark.sh
+  DownTown: TRAIN_ENVS/DownTown/DownTown1.sh
+  Neighborhood: TRAIN_ENVS/Neighborhood/NewNeighborhood.sh
+  Slum: TRAIN_ENVS/Slum/slum1.sh
+  UrbanJapan: TRAIN_ENVS/UrbanJapan/UrbanJapan.sh
+  Venice: TRAIN_ENVS/Venice/vinice_new1.sh
+  WesternTown: TRAIN_ENVS/WesternTown/WesternTown1.sh
+  WinterTown: TRAIN_ENVS/WinterTown/WinterTown1.sh
+  Barnyard_test: TEST_ENVS/Barnyard/Barnyard_test1.sh
+  BrushifyRoad_test: TEST_ENVS/BrushifyRoad/BrushifyRoad_test1.sh
+  BrushifyUrban_test: TEST_ENVS/BrushifyUrban/BrushifyUrban.sh
+  CabinLake_test: TEST_ENVS/CabinLake/CabinLake.sh
+  CityPark_test: TEST_ENVS/CityPark/CityPark.sh
+  CityStreet_test: TEST_ENVS/CityStreet/CleanCityStreet.sh
+  DownTown_test: TEST_ENVS/DownTown/DownTown_test1.sh
+  ModularNeighborhood_test: TEST_ENVS/Neighborhood/NewNeighborhood.sh
+  NYC_test: TEST_ENVS/NYC/NYC1950.sh
+  Slum_test: TEST_ENVS/Slum/Slum_test1.sh
+  UrbanJapan_test: TEST_ENVS/UrbanJapan/UrbanJapan.sh
+  Venice_test: TEST_ENVS/Venice/Vinice_test1.sh
+  WesternTown_test: TEST_ENVS/WesternTown/WesternTown_test1.sh
+  WinterTown_test: TEST_ENVS/WinterTown/WinterTown_test1.sh
