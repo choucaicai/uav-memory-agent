@@ -11,8 +11,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from model.action_tokenizer import ActionTokenizer  # noqa: E402
-from vln_datasets.data_utils import PaddedCollatorForActionPrediction  # noqa: E402
-from vln_datasets.dataset import SingleDepthRLDSBatchTransform  # noqa: E402
+from .collator import PaddedCollatorForActionPrediction  # noqa: E402
+from .transforms import SingleDepthRLDSBatchTransform  # noqa: E402
 
 from .raw_json_dataset import RawEpisodeDataset, RawJSONVLAIterableDataset  # noqa: E402
 from action_statistics import RAW_DATASET_NAME

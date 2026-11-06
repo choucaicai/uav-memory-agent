@@ -1,6 +1,6 @@
 # UAV Memory Agent
 
-HiRaMem depth (`model_hiramem_depth`) model code, training, LoRA merging, and
+HiRaMem depth (`himem_agent`) model code, training, LoRA merging, and
 UAV-ON evaluation. There are three executable workflow entry points:
 `train.py`, `merge.py`, and `eval.py`. Shared code is included in this repository.
 Weights, datasets, simulator binaries, and experiment outputs are stored separately.
@@ -15,7 +15,10 @@ The protocol uses at most 100 actions, a 20 m success threshold, seed 42, and
 action statistics `uavon_raw_json`. Pose updates ignore collisions; collisions
 do not terminate episodes. SPL uses action counts, as in the recorded result.
 
-Evaluation loads the model implementation saved in the selected merged checkpoint.
+New training checkpoints save their model code under `himem_agent/`.
+Evaluation and merging still load the package recorded in each checkpoint, so
+existing `model_hiramem_depth` checkpoints remain usable without moving their files.
+Warm-start training accepts the old package name and saves new checkpoints as `himem_agent`.
 The source package retains optional memory/depth ablation switches; their default
 values enable the full depth model.
 
@@ -26,10 +29,10 @@ values enable the full depth model.
 | `train.py` | Training configuration, distributed launch, and training loop |
 | `merge.py` | Merge LoRA and memory/depth auxiliary weights |
 | `eval.py` | Distributed evaluation, resume, and metric summary |
-| `model_hiramem_depth/` | Recurrent fine/coarse memory, Q-Former, depth head |
-| `data/` | Raw JSON episodes, RGBD transforms, depth labels, memory windows |
+| `himem_agent/` | Recurrent fine/coarse memory, Q-Former, depth head |
+| `data/` | Raw JSON episodes, input transforms, batch collation, depth labels, memory windows |
 | `evaluation/` | Simulator helpers and reference metrics |
-| `model/`, `vln_datasets/` | Shared tokenizer, prompt, image and dataset helpers |
+| `model/` | Shared tokenizer, prompt, image helpers, model registry, and loss utilities |
 | `configs/runtime.example.yaml` | Runtime path template |
 | `acc_configs/`, `airsim_configs/` | Accelerate and simulator configuration |
 
@@ -41,7 +44,7 @@ cd /path/to/uav-memory-agent
 ```
 
 The code uses PyTorch, Transformers, PEFT, Accelerate, DeepSpeed, timm,
-TensorFlow/TFDS/dlimp for shared data transforms, AirSim, and PyYAML.
+AirSim, and PyYAML. Input transforms and collation live in `data/`.
 The default model attention implementation is FlashAttention 2.
 
 ## Runtime configuration
@@ -129,7 +132,7 @@ Training uses Accelerate accumulation/backward and optimizer updates. Action,
 depth-pixel, and depth-edge losses use separate global denominators across ranks.
 Memory is detached at each TBPTT window boundary. Training metrics, validation,
 and checkpoint saving are included. See
-[the depth model documentation](model_hiramem_depth/README.md) for depth targets
+[the depth model documentation](himem_agent/README.md) for depth targets
 and model options.
 
 ## Merging

@@ -62,7 +62,7 @@ python train.py
 python train.py --depth_loss_weight 0.1 --depth_edge_weight 0.1
 ```
 
-This project includes only `model_hiramem_depth`. Queries and the depth head
+This project includes only `himem_agent`. Queries and the depth head
 train as full auxiliary parameters outside LoRA and are saved in `future_aux.bin`.
 Checkpoints include the model code, class name, configuration, and auxiliary
 weights. The merger loads these saved weights and writes a full checkpoint.

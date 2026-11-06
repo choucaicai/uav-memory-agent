@@ -14,9 +14,7 @@ from typing import Optional
 _THIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_THIS_DIR))
 os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
-# The reused legacy transforms import TensorFlow; keep its allocator off training GPUs.
-import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')
+os.environ.setdefault('USE_TF', '0')
 
 import draccus
 import torch
@@ -27,8 +25,8 @@ from peft import LoraConfig, PeftModel, get_peft_model
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
-from model_registry import resolve_model, checkpoint_model, stamp_model_config
-from loss_utils import distributed_loss, detached_statistics, describe_statistics, statistics_size
+from model.model_registry import resolve_model, checkpoint_model, stamp_model_config, canonical_model_module
+from model.loss_utils import distributed_loss, detached_statistics, describe_statistics, statistics_size
 from data.memory_data import get_memory_dataset_and_collator
 
 
@@ -39,7 +37,7 @@ class FinetuneMemoryConfig:
     master_port: int = 29331
     deepspeed_config: Path = _THIS_DIR / 'acc_configs/deep_z1_config.yaml'
     dry_run: bool = False
-    model_module: str = 'model_hiramem_depth'
+    model_module: str = 'himem_agent'
     model_class: str = 'OpenVLAForActionPrediction'
     depth_loss_weight: float = 0.1
     depth_edge_weight: float = 0.1
@@ -256,7 +254,6 @@ def save_memory_checkpoint(model, processor, cfg, directory, step):
     (directory / 'training_progress.json').write_text(json.dumps({'optimizer_step': step, 'weights_only': True}))
     shutil.copytree(_THIS_DIR / cfg.model_module, directory / cfg.model_module,
                     ignore=shutil.ignore_patterns('__pycache__'), dirs_exist_ok=True)
-    shutil.copy2(_THIS_DIR / 'model_registry.py', directory / 'model_registry.py')
 
 
 def train_memory_window(model, core, batch, optimizer, accelerator, max_grad_norm):
@@ -282,10 +279,11 @@ def train_memory_window(model, core, batch, optimizer, accelerator, max_grad_nor
 
 
 def finetune(cfg: FinetuneMemoryConfig):
+    cfg.model_module = canonical_model_module(cfg.model_module)
     if cfg.depth_target not in ('future', 'current'):
         raise ValueError('depth_target must be future or current')
-    if cfg.depth_target == 'current' and cfg.model_module != 'model_hiramem_depth':
-        raise ValueError('Current-depth ablation is supported by model_hiramem_depth only')
+    if cfg.depth_target == 'current' and cfg.model_module != 'himem_agent':
+        raise ValueError('Current-depth ablation is supported by himem_agent only')
     if cfg.tbptt_steps not in (1, 2):
         raise ValueError('tbptt_steps must be 1 or 2')
     if cfg.grad_accumulation_steps < 1 or cfg.log_steps < 1:
@@ -433,7 +431,7 @@ def main(cfg: FinetuneMemoryConfig):
     if cfg.num_processes < 1 or not 0 < cfg.master_port <= 65535:
         raise ValueError('num_processes must be positive and master_port must be in 1..65535')
     if cfg.run_id_note is None:
-        cfg.run_id_note = f'model_hiramem_depth-tbptt{cfg.tbptt_steps}-{datetime.now():%Y%m%d-%H%M%S}'
+        cfg.run_id_note = f'himem_agent-tbptt{cfg.tbptt_steps}-{datetime.now():%Y%m%d-%H%M%S}'
     if not cfg.deepspeed_config.is_file():
         raise FileNotFoundError(cfg.deepspeed_config)
     command = [sys.executable, '-u', '-m', 'accelerate.commands.launch',

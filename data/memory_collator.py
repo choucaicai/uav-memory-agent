@@ -1,6 +1,6 @@
 """Collate time-major windows without flattening or shuffling trajectory steps."""
 import torch
-from vln_datasets.data_utils import PaddedCollatorForActionPrediction
+from .collator import PaddedCollatorForActionPrediction
 
 
 class MemoryWindowCollator:

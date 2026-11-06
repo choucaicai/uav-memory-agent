@@ -10,7 +10,7 @@ import shutil
 import sys
 import tempfile
 from datetime import datetime, timezone
-from model_registry import checkpoint_model
+from model.model_registry import checkpoint_model
 
 
 def read_json(path):
